@@ -76,7 +76,16 @@ BOOL g_EnableLogging;
 
 - (void) openDocumentWithContentsOfFile: (NSString*) fileName
 {
-	[self openDocumentWithContentsOfFile: fileName display: [self shouldCreateUI]];
+	//NSDocumentController's deprecated ...File...-based methods are dead ends on
+	//modern AppKit (they silently do nothing), so go through the URL-based API
+	[self openDocumentWithContentsOfURL: [NSURL fileURLWithPath: fileName isDirectory: YES]
+								display: YES
+					  completionHandler: ^(NSDocument *document, BOOL documentWasAlreadyOpen, NSError *error)
+	{
+		//load errors were already presented by the document itself
+		if ( document == nil && error != nil && [error code] != NSUserCancelledError )
+			NSLog( @"could not open '%@': %@", fileName, error );
+	}];
 }
 
 - (BOOL) applicationShouldOpenUntitledFile: (NSApplication*) sender
@@ -85,18 +94,16 @@ BOOL g_EnableLogging;
     return NO;
 }
 
-- (id)makeDocumentWithContentsOfFile:(NSString *)fileName ofType:(NSString *)docType
+- (NSString *)typeForContentsOfURL:(NSURL *)url error:(NSError **)outError
 {
-	//check whether "fileName" is a folder
-	NSDictionary *attribs = [[NSFileManager defaultManager] fileAttributesAtPath: fileName traverseLink: NO];
-    if ( attribs != nil )
-	{
-		NSString *type = [attribs fileType];
-		if ( type != nil && [type isEqualToString: NSFileTypeDirectory] )
-			return [super makeDocumentWithContentsOfFile:fileName ofType: @"Folder"];
-	}
-	
-	return nil;
+	//since the Info.plist declares LSItemContentTypes, document type names are
+	//UTIs; treat every directory (including volumes and packages, whose UTIs
+	//would not conform to public.folder) as a plain folder
+	NSNumber *isDir = nil;
+	if ( [url getResourceValue: &isDir forKey: NSURLIsDirectoryKey error: NULL] && [isDir boolValue] )
+		return @"public.folder";
+
+	return [super typeForContentsOfURL: url error: outError];
 }
 
 //"Open..." menu handler
@@ -111,7 +118,7 @@ BOOL g_EnableLogging;
 	
 	for ( NSURL *dir in fileNames )
 	{
-		[self openDocumentWithContentsOfFile: [dir path] display: YES];
+		[self openDocumentWithContentsOfFile: [dir path]];
 	}
 }
 
