@@ -333,9 +333,14 @@
 - (void) windowWillClose: (NSNotification*) notification
 {
 	[[self document] removeObserver: self forKeyPath: DocKeySelectedItem];
-	
+
     [[NSNotificationCenter defaultCenter] removeObserver: self];
 	[[NSUserDefaultsController sharedUserDefaultsController] removeObserver: self forKeyPath: [@"values." stringByAppendingString: ShareKindColors]];
+
+	//detach from the tree map view; it may draw once more (async layer drawing)
+	//after we and the document are deallocated
+	[_treeMapView setDelegate: nil];
+	[_treeMapView setDataSource: nil];
 }
 
 @end
