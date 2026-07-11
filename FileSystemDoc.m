@@ -163,6 +163,7 @@ NSString *DocKeySelectedItem = @"selectedItem";
 NSString *GlobalSelectionChangedNotification = @"GlobalSelectionChanged";
 NSString *ZoomedItemChangedNotification = @"ZoomedItemChanged";
 NSString *FSItemsChangedNotification = @"FSItemsChanged";
+NSString *ChangedParentFolders = @"ChangedParentFolders";
 NSString *ViewOptionChangedNotification = @"ViewOptionsChangedNotification";
 NSString *ChangedViewOption = @"ChangedViewOption";
 NSString *NewItem = @"NewItem";
@@ -231,6 +232,22 @@ NSString *OldItem = @"OldItem";
 {
     [super windowControllerDidLoadNib:aController];
     // Add any code here that needs to be executed once the windowController has loaded the document's window.
+}
+
+- (BOOL) readFromURL: (NSURL *) url ofType: (NSString *) typeName error: (NSError **) outError
+{
+	//modern entry point; NSDocumentController no longer calls the deprecated
+	//readFromFile:ofType: on its own.
+	//readFromFile:ofType: presents its own error UI and returns NO for both
+	//"canceled" and "failed", so report NSUserCancelledError to keep
+	//NSDocumentController from presenting a second alert on top.
+	if ( [self readFromFile: [url path] ofType: typeName] )
+		return YES;
+
+	if ( outError != NULL )
+		*outError = [NSError errorWithDomain: NSCocoaErrorDomain code: NSUserCancelledError userInfo: nil];
+
+	return NO;
 }
 
 - (BOOL) readFromFile: (NSString *) folder ofType: (NSString *) docType
@@ -526,9 +543,17 @@ NSString *OldItem = @"OldItem";
 	//"checkTrash" may have editied the kind statistic, so notify observers but now
 	[self didChangeValueForKey: @"kindStatistics"];
 	
-	//notify observers of the change
-	[[NSNotificationCenter defaultCenter] postNotificationName: FSItemsChangedNotification object: self];
-	
+	//notify observers of the change; pass the folders whose children changed,
+	//so views can update incrementally instead of doing a full reload
+	NSMutableArray *changedParents = [NSMutableArray arrayWithObject: parent];
+	if ( trashItem != nil && newFileInTrash != nil )
+		[changedParents addObject: trashItem];
+
+	[[NSNotificationCenter defaultCenter] postNotificationName: FSItemsChangedNotification
+														object: self
+													  userInfo: [NSDictionary dictionaryWithObject: changedParents
+																							forKey: ChangedParentFolders]];
+
 	//try to set "parent" as new selection
 	if ( parent != [self zoomedItem] )
 		[self setSelectedItem: parent];

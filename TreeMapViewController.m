@@ -270,6 +270,30 @@
 
 - (void) itemsChanged: (NSNotification*) notification
 {
+	//if we know which folders changed, update just those parts of the tree map;
+	//a full reload rebuilds and re-renders the whole map, which takes seconds
+	//on large scans (e.g. deleting a few files on a whole-volume scan)
+	NSArray *changedParents = [[notification userInfo] objectForKey: ChangedParentFolders];
+	if ( [changedParents count] > 0 )
+	{
+		FSItem *zoomedItem = [[self document] zoomedItem];
+
+		NSEnumerator *parentEnum = [changedParents objectEnumerator];
+		FSItem *parent;
+		while ( (parent = [parentEnum nextObject]) != nil )
+		{
+			if ( parent == zoomedItem )
+				break; //children of the tree map's root changed; needs a full reload (incl. special items)
+
+			if ( [parent isDescendantOf: zoomedItem] )
+				[_treeMapView reloadItemByPathToItem: [parent fsItemPathFromAncestor: zoomedItem]];
+			//else: the change is not visible in the tree map (e.g. trash folder outside the zoomed item)
+		}
+
+		if ( parent == nil )
+			return; //all changes handled incrementally
+	}
+
 	//create new "free space" and "other space" items
 	//(don't use [self rootItem] as we want the root, not the zoomed item)
 	FSItem *rootItem =  [[self document] rootItem];

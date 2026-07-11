@@ -105,7 +105,8 @@ extern NSString *DocKeySelectedItem;
 /* FileSystemDoc Notifications */
 extern NSString *GlobalSelectionChangedNotification; //userInfo contains new and old selection
 extern NSString *ZoomedItemChangedNotification; //userInfo contains new and old zoomed item
-extern NSString *FSItemsChangedNotification; //some items are modified, deleted or added; userInfo is nil
+extern NSString *FSItemsChangedNotification; //some items are modified, deleted or added; userInfo is nil or contains ChangedParentFolders
+extern NSString *ChangedParentFolders; //optional userInfo key of FSItemsChangedNotification: NSArray of the folder FSItems whose children changed (enables incremental view updates)
 extern NSString *ViewOptionChangedNotification; //the name of the changed option is stored in userInfo for key ChangedViewOption (see next line)
 extern NSString *ChangedViewOption;
 extern NSString *NewItem;
