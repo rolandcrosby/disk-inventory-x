@@ -11,6 +11,12 @@ set -e
 #   ./BuildRelease.sh --release  Developer ID signed + notarized + stapled +
 #                                zipped; the identity and the notarytool
 #                                profile are discovered in the keychain
+#   ./BuildRelease.sh --publish  --release, then create a GitHub release
+#                                (tag v<version>) with the zip attached.
+#                                Requires a clean, pushed HEAD and gh auth.
+#
+# Run --release/--publish from a foreground shell: keychain-backed notarytool
+# calls are denied in detached/background shells.
 #
 # Environment (each overrides the keychain discovery in --release mode):
 #   CODESIGN_IDENTITY  identity for the app and embedded frameworks
@@ -19,7 +25,27 @@ set -e
 #                      One-time setup: xcrun notarytool store-credentials
 #   FORCE_DEPS=1       rebuild dependency frameworks even if they exist
 
-if [ "$1" = "--release" ]; then
+RELEASE=""
+PUBLISH=""
+case "${1:-}" in
+    "") ;;
+    --release) RELEASE=1 ;;
+    --publish) RELEASE=1; PUBLISH=1 ;;
+    *) echo "usage: $0 [--release|--publish]" >&2; exit 1 ;;
+esac
+
+if [ -n "$PUBLISH" ]; then
+    # fail fast, before minutes of building and notarizing
+    [ -z "$(git status --porcelain)" ] \
+        || { echo "error: working tree is not clean; commit before publishing" >&2; exit 1; }
+    gh repo view --json nameWithOwner -q .nameWithOwner > /dev/null 2>&1 \
+        || { echo "error: gh can't resolve a GitHub repo from the git remotes; push the fork to GitHub first" >&2; exit 1; }
+    git fetch -q
+    git branch -r --contains HEAD | grep -q . \
+        || { echo "error: HEAD is not pushed to any remote; push before publishing" >&2; exit 1; }
+fi
+
+if [ -n "$RELEASE" ]; then
     if [ -z "$CODESIGN_IDENTITY" ]; then
         CODESIGN_IDENTITY=$(security find-identity -v -p codesigning \
             | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)
@@ -84,4 +110,13 @@ if [ -n "$NOTARY_PROFILE" ]; then
     rm "$ZIP"
     ditto -c -k --keepParent "$APP" "$ZIP"
     echo "Ready for upload: $ZIP"
+fi
+
+if [ -n "$PUBLISH" ]; then
+    TAG="v$VERSION"
+    echo "=== Creating GitHub release $TAG ==="
+    gh release create "$TAG" "$ZIP" \
+        --title "Disk Inventory X $VERSION" \
+        --target "$(git rev-parse HEAD)" \
+        --generate-notes
 fi
