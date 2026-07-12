@@ -102,13 +102,29 @@ codesign --verify --deep --strict "$APP"
 if [ -n "$NOTARY_PROFILE" ]; then
     VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")
     ZIP="build/Release/Disk-Inventory-X-$VERSION.zip"
+    # --norsrc: never archive xattrs. The system stamps un-removable
+    # com.apple.provenance xattrs on the bundle whenever the built app is
+    # launched; ditto would store them as AppleDouble "._" entries, and
+    # extraction on another Mac can materialize those as real files inside
+    # the sealed bundles — Gatekeeper then rejects the app ("unsealed
+    # contents...") even though the notarization ticket is valid.
     echo "=== Notarizing ==="
-    ditto -c -k --keepParent "$APP" "$ZIP"
+    ditto -c -k --norsrc --keepParent "$APP" "$ZIP"
     xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
     xcrun stapler staple "$APP"
     # re-zip so the published archive contains the stapled ticket
     rm "$ZIP"
-    ditto -c -k --keepParent "$APP" "$ZIP"
+    ditto -c -k --norsrc --keepParent "$APP" "$ZIP"
+
+    # verify the archive the way a downloader experiences it: extract with
+    # unzip (which materializes any stray AppleDouble entries as files
+    # instead of restoring them to xattrs) and assess the result
+    ROUNDTRIP=$(mktemp -d)
+    unzip -qq "$ZIP" -d "$ROUNDTRIP"
+    codesign --verify --strict --deep "$ROUNDTRIP/Disk Inventory X.app"
+    spctl -a -t exec "$ROUNDTRIP/Disk Inventory X.app"
+    rm -rf "$ROUNDTRIP"
+    echo "Round-trip Gatekeeper check passed"
     echo "Ready for upload: $ZIP"
 fi
 
